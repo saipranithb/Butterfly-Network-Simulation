@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Butterfly Network Visualizer</title>
+    <style>
+        .container { margin: 20px; padding: 10px; }
+        .node { fill: #ddd; stroke: #333; r: 6; transition: fill 0.5s; }
+        .active-node { fill: #4CAF50; }
+        .link { stroke: #999; stroke-width: 2; opacity: 0.3; transition: all 0.5s; }
+        .active-link { stroke: #FF5722; stroke-width: 4; opacity: 1; }
+        svg { border: 1px solid #ccc; margin-top: 20px; padding: 40px; }
+        .input-group { margin: 10px 0; }
+        .hidden { display: none; }
+        button { cursor: pointer; padding: 5px 15px; }
+        .node-label { font: 12px sans-serif; }
+        .highlight-label { fill: #2196F3; font-weight: bold; }
+        .switch-box { fill: none; stroke: #999; stroke-width: 1; rx: 5; }
+        .column-label { font: 14px sans-serif; text-anchor: middle; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Butterfly Network Visualizer</h2>
+        <h5>Simulation developed by Sai Pranith Bhagavatula as a part of the project at IIT Kharagpur, under the guidance of Prof. Arnab Sarkar</h5>
+        <div class="input-group">
+            <label>Number of Stages (k): </label>
+            <input type="number" id="k" value="3">
+            <button onclick="generateNetwork()">Build Network</button>
+        </div>
+        <div id="path-controls" class="hidden">
+            <div class="input-group">
+                <label>Source: <input type="number" id="source" value="2"></label>
+                <label>Destination: <input type="number" id="dest" value="5"></label>
+                <button onclick="animatePath()">Show Path</button>
+            </div>
+        </div>
+        <div id="network"></div>
+    </div>
+
+    <script>
+        let networkData = { switches: [], links: [], labels: { input: [], output: [] } };
+        let currentAnimation = null;
+        const NODE_SPACING = 70;
+        const STAGE_WIDTH = 140;
+        const VERTICAL_PADDING = 70;
+        const LABEL_COLUMN_WIDTH = 60;
+        const NETWORK_OFFSET = 30;
+
+        function generateNetwork() {
+            const k = parseInt(document.getElementById('k').value);
+            document.getElementById('path-controls').classList.remove('hidden');
+            drawBaseNetwork(k);
+        }
+
+        function drawBaseNetwork(k) {
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            const numNodes = Math.pow(2, k);
+            const numSwitches = numNodes / 2;
+            
+            // My endless efforts to calculate dimensions to get the drawing to the center
+            const width = LABEL_COLUMN_WIDTH + (k * STAGE_WIDTH) + LABEL_COLUMN_WIDTH + NETWORK_OFFSET*2;
+            const height = numSwitches * NODE_SPACING + 2 * VERTICAL_PADDING;
+            
+            svg.setAttribute("width", width);
+            svg.setAttribute("height", height);
+            
+            networkData = { switches: [], links: [], labels: { input: [], output: [] } };
+
+            // Input labels
+            const inputLabelX = LABEL_COLUMN_WIDTH / 2 + NETWORK_OFFSET;
+            for(let node = 0; node < numNodes; node++) {
+                const y = VERTICAL_PADDING + (Math.floor(node/2) * NODE_SPACING) + 
+                        (node % 2 === 0 ? -10 : 10);
+                const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                label.setAttribute("x", inputLabelX);
+                label.setAttribute("y", y);
+                label.setAttribute("text-anchor", "middle");
+                label.classList.add("node-label");
+                label.textContent = node;
+                svg.appendChild(label);
+                networkData.labels.input[node] = label;
+            }
+
+            // Output labels
+            const outputLabelX = LABEL_COLUMN_WIDTH + (k * STAGE_WIDTH) + NETWORK_OFFSET + LABEL_COLUMN_WIDTH/2;
+            for(let node = 0; node < numNodes; node++) {
+                const y = VERTICAL_PADDING + (Math.floor(node/2) * NODE_SPACING) + 
+                        (node % 2 === 0 ? -10 : 10);
+                const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                label.setAttribute("x", outputLabelX);
+                label.setAttribute("y", y);
+                label.setAttribute("text-anchor", "middle");
+                label.classList.add("node-label");
+                label.textContent = node;
+                svg.appendChild(label);
+                networkData.labels.output[node] = label;
+            }
+
+            for(let stage = 0; stage < k; stage++) {
+                networkData.switches[stage] = [];
+                networkData.links[stage] = [];
+                const stageX = LABEL_COLUMN_WIDTH + stage * STAGE_WIDTH + NETWORK_OFFSET;
+
+                for(let sw = 0; sw < numSwitches; sw++) {
+                    const y = VERTICAL_PADDING + sw * NODE_SPACING;
+
+                    // Switch box
+                    const switchBox = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    switchBox.setAttribute("x", stageX - 20);
+                    switchBox.setAttribute("y", y - 20);
+                    switchBox.setAttribute("width", 40);
+                    switchBox.setAttribute("height", 40);
+                    switchBox.classList.add("switch-box");
+                    svg.appendChild(switchBox);
+
+                    const switchGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    
+                    // Top node (even)
+                    const topNode = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    topNode.setAttribute("cx", stageX);
+                    topNode.setAttribute("cy", y - 10);
+                    topNode.setAttribute("r", 6);
+                    topNode.classList.add("node");
+                    
+                    // Bottom node (odd)
+                    const bottomNode = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    bottomNode.setAttribute("cx", stageX);
+                    bottomNode.setAttribute("cy", y + 10);
+                    bottomNode.setAttribute("r", 6);
+                    bottomNode.classList.add("node");
+
+                    switchGroup.appendChild(topNode);
+                    switchGroup.appendChild(bottomNode);
+                    svg.appendChild(switchGroup);
+                    networkData.switches[stage][sw] = switchGroup;
+
+                    if(stage < k-1) {
+                        const nextSwStraight = sw;
+                        const nextSwCross = sw ^ (1 << (k - stage - 2));
+
+                        // Straight link
+                        const straightLink = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                        straightLink.setAttribute("x1", stageX);
+                        straightLink.setAttribute("y1", y);
+                        straightLink.setAttribute("x2", stageX + STAGE_WIDTH);
+                        straightLink.setAttribute("y2", VERTICAL_PADDING + nextSwStraight * NODE_SPACING);
+                        straightLink.classList.add("link");
+
+                        // Cross link
+                        const crossLink = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                        crossLink.setAttribute("x1", stageX);
+                        crossLink.setAttribute("y1", y);
+                        crossLink.setAttribute("x2", stageX + STAGE_WIDTH);
+                        crossLink.setAttribute("y2", VERTICAL_PADDING + nextSwCross * NODE_SPACING);
+                        crossLink.classList.add("link");
+
+                        svg.appendChild(straightLink);
+                        svg.appendChild(crossLink);
+                        networkData.links[stage][sw] = { straight: straightLink, cross: crossLink };
+                    }
+                }
+            }
+
+            const addHeader = (x, text) => {
+                const header = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                header.setAttribute("x", x);
+                header.setAttribute("y", 30);
+                header.setAttribute("text-anchor", "middle");
+                header.classList.add("column-label");
+                header.textContent = text;
+                svg.appendChild(header);
+            };
+            addHeader(inputLabelX, "Input Nodes");
+            addHeader(outputLabelX, "Output Nodes");
+
+            document.getElementById('network').innerHTML = '';
+            document.getElementById('network').appendChild(svg);
+        }
+
+        function animatePath() {
+            if(currentAnimation) clearInterval(currentAnimation);
+            resetNetworkColors();
+
+            const k = parseInt(document.getElementById('k').value);
+            const source = parseInt(document.getElementById('source').value);
+            const dest = parseInt(document.getElementById('dest').value);
+            const maxNodes = Math.pow(2, k);
+            
+            if(source < 0 || source >= maxNodes || dest < 0 || dest >= maxNodes) {
+                alert(`Invalid source/destination. Range: 0-${maxNodes-1}`);
+                return;
+            }
+
+            networkData.labels.input[source].classList.add('highlight-label');
+            networkData.labels.output[dest].classList.add('highlight-label');
+
+            const { switches: switchPath, links } = computeButterflyPath(k, source, dest);
+            const animationSteps = [];
+
+            for(let stage = 0; stage < switchPath.length; stage++) {
+                animationSteps.push({
+                    type: 'switch',
+                    stage,
+                    switch: switchPath[stage]
+                });
+                if(stage > 0) {
+                    animationSteps.push({
+                        type: 'link',
+                        stage: stage-1,
+                        switch: switchPath[stage-1],
+                        linkType: links[stage-1]
+                    });
+                }
+            }
+
+            let stepIndex = 0;
+            currentAnimation = setInterval(() => {
+                if(stepIndex >= animationSteps.length) {
+                    clearInterval(currentAnimation);
+                    return;
+                }
+
+                const step = animationSteps[stepIndex];
+                if(step.type === 'switch') {
+                    networkData.switches[step.stage][step.switch].childNodes.forEach(node => {
+                        node.classList.add('active-node');
+                    });
+                } else {
+                    networkData.links[step.stage][step.switch][step.linkType].classList.add('active-link');
+                }
+
+                stepIndex++;
+            }, 500);
+        }
+
+        function resetNetworkColors() {
+            networkData.switches.forEach(stage => {
+                stage.forEach(sw => {
+                    sw.childNodes.forEach(node => node.classList.remove('active-node'));
+                });
+            });
+            networkData.links.forEach(stage => {
+                stage.forEach(links => {
+                    links.straight.classList.remove('active-link');
+                    links.cross.classList.remove('active-link');
+                });
+            });
+            Object.values(networkData.labels.input).forEach(label => 
+                label.classList.remove('highlight-label'));
+            Object.values(networkData.labels.output).forEach(label => 
+                label.classList.remove('highlight-label'));
+        }
+
+        function computeButterflyPath(k, source, dest) {
+            const switches = [];
+            const links = [];
+            let currentSwitch = Math.floor(source / 2);
+            const cf = source ^ dest;
+
+            switches.push(currentSwitch);
+
+            for(let stage = 0; stage < k; stage++) {
+                const bitPosition = k - stage - 1;
+                const mask = 1 << bitPosition;
+
+                if(cf & mask) {
+                    currentSwitch ^= (1 << (bitPosition - 1));
+                    links.push('cross');
+                } else {
+                    links.push('straight');
+                }
+                
+                if(stage < k-1) switches.push(currentSwitch);
+            }
+
+            return { switches, links };
+        }
+    </script>
+</body>
+</html>
